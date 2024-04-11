@@ -15,11 +15,11 @@ load_dotenv()
 DB_NAME = os.getenv('DB_NAME', 'adverts.db')
 
 engine = create_async_engine(
-    f'sqlite:///{DB_NAME}?charset=utf8',
+    f'sqlite+aiosqlite:///{DB_NAME}?charset=utf8',
 )
 Session = async_sessionmaker(bind=engine, expire_on_commit=False)
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 class User(Base):
@@ -57,16 +57,17 @@ class Advert(Base):
     owner: Mapped[User] = relationship(User, back_populates="adverts")
 
     @property
-    def json(self):
+    async def json(self):
+        owner = await self.awaitable_attrs.owner
         return {
             'id': self.id,
             'title': self.title,
             'note': self.note,
-            'created_at': self.created_at,
-            'owner': self.owner.name
+            'created_at': int(self.created_at.timestamp()),
+            'owner': owner.name
         }
 
 
-Base.metadata.create_all(bind=engine)
-
-atexit.register(engine.dispose)
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
